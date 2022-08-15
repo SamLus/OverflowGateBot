@@ -1,0 +1,46 @@
+apply plugin: 'java'
+
+project.ext.mainClassName = "OverflowGateBot.OverflowGateBot"
+sourceCompatibility = targetCompatibility = 16
+version = '1.0'
+
+sourceSets.main.java.srcDirs = ["src/"]
+allprojects{
+    repositories{
+        mavenLocal()
+        mavenCentral()
+        maven{ url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        maven{ url "https://oss.sonatype.org/content/repositories/releases/" }
+        maven{ url 'https://jitpack.io' }
+        maven{
+            name 'm2-dv8tion'
+            url 'https://m2.dv8tion.net/releases'
+        }
+    }
+}
+
+ext{
+    mindustryVersion = 'v136'
+}
+
+task dist(type: Jar){
+    from files(sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.output.resourcesDir)
+    from {configurations.runtimeClasspath.collect{ it.isDirectory() || !it.name.endsWithAny(".zip", ".jar") ? it : zipTree(it) }}
+
+    archiveFileName = "OverflowGateBot.jar"
+
+    manifest{
+        attributes 'Main-Class': project.mainClassName
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+dependencies{
+    implementation("net.dv8tion:JDA:5.0.0-alpha.10")
+    implementation "org.jsoup:jsoup:1.7.2"
+    implementation "com.github.Anuken.Mindustry:core:$mindustryVersion"
+    implementation "com.github.Anuken.Arc:arc-core:dfcb21ce56"
+    implementation "org.slf4j:slf4j-nop:1.7.31"
+}
