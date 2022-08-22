@@ -1,62 +1,36 @@
 package OverflowGateBot;
 
-import static mindustry.Vars.*;
-
-import java.awt.Graphics2D;
-import java.awt.geom.AffineTransform;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.zip.InflaterInputStream;
-
-import javax.imageio.ImageIO;
-
-import arc.Core;
-import arc.files.Fi;
+import arc.*;
+import arc.files.*;
 import arc.graphics.Color;
-import arc.graphics.Texture;
-import arc.graphics.g2d.Draw;
-import arc.graphics.g2d.Lines;
-import arc.graphics.g2d.SpriteBatch;
-import arc.graphics.g2d.TextureAtlas;
-import arc.graphics.g2d.TextureAtlas.AtlasRegion;
-import arc.graphics.g2d.TextureAtlas.TextureAtlasData;
-import arc.graphics.g2d.TextureRegion;
-import arc.math.Mathf;
-import arc.math.geom.Point2;
-import arc.struct.IntMap;
-import arc.struct.ObjectMap;
-import arc.struct.Seq;
-import arc.struct.StringMap;
-import arc.util.io.CounterInputStream;
-import arc.util.io.Reads;
-import arc.util.serialization.Base64Coder;
-import mindustry.Vars;
-import mindustry.content.Blocks;
-import mindustry.core.GameState;
-import mindustry.core.Version;
-import mindustry.core.World;
-import mindustry.ctype.Content;
-import mindustry.ctype.ContentType;
-import mindustry.entities.units.BuildPlan;
-import mindustry.game.Schematic;
-import mindustry.game.Schematic.Stile;
-import mindustry.game.Team;
-import mindustry.io.MapIO;
-import mindustry.io.SaveFileReader;
-import mindustry.io.SaveIO;
-import mindustry.io.SaveVersion;
-import mindustry.io.TypeIO;
-import mindustry.world.Block;
-import mindustry.world.CachedTile;
-import mindustry.world.Tile;
-import mindustry.world.WorldContext;
-import mindustry.world.blocks.environment.OreBlock;
-import mindustry.world.blocks.legacy.LegacyBlock;
-import mindustry.core.ContentLoader;
+import arc.graphics.*;
+import arc.graphics.g2d.*;
+import arc.graphics.g2d.TextureAtlas.*;
+import arc.math.*;
+import arc.math.geom.*;
+import arc.struct.*;
+import arc.util.io.*;
+import arc.util.serialization.*;
+import mindustry.*;
+import mindustry.content.*;
+import mindustry.core.*;
+import mindustry.ctype.*;
+import mindustry.entities.units.*;
+import mindustry.game.*;
+import mindustry.game.Schematic.*;
+import mindustry.io.*;
+import mindustry.world.*;
+import mindustry.world.blocks.environment.*;
+import mindustry.world.blocks.legacy.*;
+
+import javax.imageio.*;
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.*;
+import java.io.*;
+import java.util.zip.*;
+
+import static mindustry.Vars.*;
 
 public class ContentHandler {
     public static final String schemHeader = schematicBaseStart;
@@ -227,7 +201,6 @@ public class ContentHandler {
             for (int i = 0; i < tags; i++) {
                 map.put(stream.readUTF(), stream.readUTF());
             }
-
 
             IntMap<Block> blocks = new IntMap<>();
             byte length = stream.readByte();
