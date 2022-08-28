@@ -2,17 +2,19 @@ package OverflowGateBot;
 
 import arc.files.*;
 import arc.util.*;
-import arc.util.Log;
 import arc.util.io.Streams;
 import mindustry.*;
 import mindustry.game.*;
 import net.dv8tion.jda.api.*;
 import net.dv8tion.jda.api.entities.*;
+import net.dv8tion.jda.api.entities.Activity.ActivityType;
 import net.dv8tion.jda.api.entities.Message.Attachment;
 import net.dv8tion.jda.api.events.message.*;
 import net.dv8tion.jda.api.hooks.*;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 
 import javax.imageio.*;
@@ -32,9 +34,9 @@ public class Messages extends ListenerAdapter {
 
     private final JDA jda;
 
-    public String prefix = ">";
+    public String prefix = "<";
 
-    private Guild guild;
+    public Guild guild;
 
     long discussSchematic = 1010379724440207381l;
     long donateSchematic = 1010383122623385631l;
@@ -54,11 +56,11 @@ public class Messages extends ListenerAdapter {
     long discussMap = 1010382856557703168l;
     long libraryMap = 1010387795338080287l;
 
+    long serverStatusChannel = 1012362641060155462l;
+
     long[] noTextChannel = {
             donateSchematic,
             donateMap,
-            libraryMap,
-            discussLogic
     };
 
     long[] schematicChannel = {
@@ -115,16 +117,23 @@ public class Messages extends ListenerAdapter {
         String token = "";
 
         try {
-            commandHandler.register("help", 1, "help", "List all commands", "Help");
-            commandHandler.register("help", 2, "help command_name", "Help", "Command description");
+            commandHandler.register("help", 1, "help", "List all commands", "help");
+            commandHandler.register("help", 2, "help command_name", "How to use a command", "Input command name");
             commandHandler.register("postmap", 1, "postmap", "Preview map file",
                     "Attach map file to command to preview it");
+            commandHandler.register("postschem", 1, "postschem", "Preview schematic file",
+                    "Reply a message to post its file");
+            commandHandler.register("refreshserver", 1, "refreshserver",
+                    "Refresh server status instantly", "refreshserver");
 
             jda = JDABuilder.createDefault(token)
                     .addEventListeners(this)
+                    .setMemberCachePolicy(MemberCachePolicy.ALL)
+                    .enableIntents(GatewayIntent.GUILD_MEMBERS)
                     .build();
 
-            jda.awaitReady();
+            jda.awaitReady().getPresence()
+                    .setActivity(Activity.of(ActivityType.PLAYING, "Type " + prefix + "help to start"));
 
             guild = jda.getGuildById(1010373870395596830l);
             guild.upsertCommand(
@@ -132,6 +141,9 @@ public class Messages extends ListenerAdapter {
                             "mapfile", "Map file to preview"))
                     .queue();
 
+            guild.upsertCommand(
+                    Commands.slash("warn", "Warn someone").addOption(OptionType.USER, "user", "User to be warned"))
+                    .queue();
             Log.info("Bot online.");
 
         } catch (Exception e) {
@@ -143,12 +155,11 @@ public class Messages extends ListenerAdapter {
     public void onMessageReceived(MessageReceivedEvent event) {
         var message = event.getMessage();
 
-        Log.info(message.getContentRaw());
-
         if (message.getAuthor().isBot()) {
-            guild.modifyNickname(message.getMember(), "OverflowGate").queue();
             return;
         }
+        userHandler.checkSpam(message);
+
         // command register
         if (message.getContentRaw().startsWith(prefix)) {
             handleCommand(message);
@@ -156,21 +167,21 @@ public class Messages extends ListenerAdapter {
         }
         // schematic preview
         if ((isSchematicText(message) && message.getAttachments().isEmpty()) || isSchematicFile(message)) {
-            handleSchematic(message);
+            handleSchematic(message, message.getTextChannel());
             return;
         }
         // delete invalid message
-        if (inChannels(message, noTextChannel)) {
+        if (inChannels(message, noTextChannel) || message.getContentRaw().startsWith("#")) {
             replyErrorMessage(message, "Please don't send message in this channel", 10);
             return;
         }
 
+        Log.info(message.getContentRaw());
     }
 
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
         if (event.getName().equals("postmap")) {
-            event.deferReply().queue();
             MessageChannel channel = event.getHook().getInteraction().getMessageChannel();
             if (event.getOptions().isEmpty()) {
                 sendErrorMessage(channel, "Please attach a map file to use this command", 10);
@@ -242,12 +253,24 @@ public class Messages extends ListenerAdapter {
     }
 
     public boolean isSchematicFile(Message message) {
-        return message.getAttachments().size() == 1 && message.getAttachments().get(0).getFileExtension() != null
-                && message.getAttachments().get(0).getFileExtension().equals(Vars.schematicExtension);
+        for (int i = 0; i < message.getAttachments().size(); i++) {
+            if (message.getAttachments().get(i).getFileExtension() != null
+                    && message.getAttachments().get(i).getFileExtension().equals(Vars.schematicExtension))
+                return true;
+        }
+        return false;
+    }
+
+    public boolean isSchematicFile(Attachment a) {
+        return a.getFileExtension() != null && a.getFileExtension().equals(Vars.schematicExtension);
     }
 
     public boolean isMapFile(Message message) {
         return message.getAttachments().get(0).getFileName().endsWith(".msav");
+    }
+
+    public boolean isMapFile(Attachment a) {
+        return a.getFileName().endsWith(".msav");
     }
 
     public String capitalize(String text) {
@@ -260,100 +283,59 @@ public class Messages extends ListenerAdapter {
 
     public void handleCommand(Message message) {
         String[] command = message.getContentRaw().replace(prefix, "").split(" ");
-        // ratio command
-        if (command[0].equals("ratio") && command.length == 3) {
-            if (message.getChannel().getIdLong() != botRatio) {
-                replyErrorMessage(message, "Please don't send message here", 10);
-                return;
-            }
-            String result = ratio.getRatio(command[1], Integer.parseInt(command[2]));
-            replyTempMessage(message, result, 300);
-            return;
-        }
         // help command
-        else if (command[0].equals("help") && command.length == 1) {
-            EmbedBuilder builder = new EmbedBuilder();
-            StringBuffer field = new StringBuffer();
-            builder.setTitle(bold("HELP"));
-            String desc = "";
-            for (String c : commandHandler.commands.keySet()) {
-                if (commandHandler.getCommand(c) == null)
-                    continue;
-                desc = commandHandler.commands.get(c).desc;
-                field.append(capitalize(bold(c)) + ": " + capitalize(desc) + "\n");
-            }
-            builder.addField("COMMANDS", field.toString(), false);
-            message.getChannel().sendMessageEmbeds(builder.build()).queue(_message -> {
-                _message.delete().queueAfter(30, TimeUnit.SECONDS);
-            });
-            message.delete().queue();
-
+        if (command[0].equals("help") && (command.length == 1 || command.length == 2)) {
+            helpCommand(message, command);
             return;
         }
         // postmap command
         else if (command[0].equals("postmap") && command.length == 1) {
-            if (message.getAttachments().size() != 1) {
-                replyErrorMessage(message, "Please send one attachment", 10);
-                return;
-            }
-            if (inChannels(message, mapChannel)) {
-                if (isMapFile(message)) {
-                    handleMap(message);
-                    return;
-                } else {
-                    replyErrorMessage(message, "Please don't send message here", 10);
-                    return;
-                }
-            }
-            replyTempMessage(message, "Please use this command on #map channel", 10);
-        }
-        // help command
-        else if (command[0].equals("help") && command.length == 2) {
-            Command c = commandHandler.getCommand(command[1]);
-            if (c == null) {
-                replyErrorMessage(message, "Command " + command[1] + " not found", 10);
-                return;
-            }
-            EmbedBuilder builder = new EmbedBuilder();
-            builder.setTitle(capitalize(command[1]));
-            StringBuilder field = new StringBuilder();
-
-            field.append(c.usage);
-            builder.addField(prefix + c.argsv, "_" + field.toString() + "_", true);
-
-            message.getChannel().sendMessageEmbeds(builder.build()).queue(_message -> {
-                _message.delete().queueAfter(30, TimeUnit.SECONDS);
-            });
-            message.delete().queueAfter(30, TimeUnit.SECONDS);
+            postMapCommand(message, command);
             return;
         }
+        // post schem
+        else if (command[0].equals("postschem") && command.length == 1) {
+            postSchematicCommand(message, command);
+            return;
+        }
+
+        // refresh server
+        else if (command[0].equals("refreshserver") && command.length == 1) {
+            serverStatus.refreshServerStat();
+            replyTempMessage(message, "Refreshing", 10);
+            return;
+        }
+
     }
 
-    public void handleMap(Message message) {
+    public void handleMap(Message message, TextChannel channel) {
+        for (int i = 0; i < message.getAttachments().size(); i++) {
+            Attachment a = message.getAttachments().get(i);
+            if (isMapFile(a)) {
+                try {
+                    ContentHandler.Map map = contentHandler.readMap(net.download(a.getUrl()));
+                    new File("cache/").mkdir();
+                    File mapFile = new File("cache/" + a.getFileName());
+                    Fi imageFile = Fi.get("cache/image_" + a.getFileName().replace(".msav", ".png"));
+                    Streams.copy(net.download(a.getUrl()), new FileOutputStream(mapFile));
+                    ImageIO.write(map.image, "png", imageFile.file());
 
-        Attachment a = message.getAttachments().get(0);
+                    EmbedBuilder builder = new EmbedBuilder()
+                            .setImage("attachment://" + imageFile.name())
+                            .setAuthor(message.getAuthor().getName(), message.getAuthor().getEffectiveAvatarUrl(),
+                                    message.getAuthor().getEffectiveAvatarUrl())
+                            .setTitle(map.name == null ? a.getFileName().replace(".msav", "") : map.name);
 
-        try {
-            ContentHandler.Map map = contentHandler.readMap(net.download(a.getUrl()));
-            new File("cache/").mkdir();
-            File mapFile = new File("cache/" + a.getFileName());
-            Fi imageFile = Fi.get("cache/image_" + a.getFileName().replace(".msav", ".png"));
-            Streams.copy(net.download(a.getUrl()), new FileOutputStream(mapFile));
-            ImageIO.write(map.image, "png", imageFile.file());
+                    if (map.description != null)
+                        builder.setFooter(map.description);
 
-            EmbedBuilder builder = new EmbedBuilder()
-                    .setImage("attachment://" + imageFile.name())
-                    .setAuthor(message.getAuthor().getName(), message.getAuthor().getEffectiveAvatarUrl(),
-                            message.getAuthor().getEffectiveAvatarUrl())
-                    .setTitle(map.name == null ? a.getFileName().replace(".msav", "") : map.name);
+                    channel.sendFile(mapFile).addFile(imageFile.file()).setEmbeds(builder.build()).queue();
+                    message.delete().queue();
 
-            if (map.description != null)
-                builder.setFooter(map.description);
-
-            message.getChannel().sendFile(mapFile).addFile(imageFile.file()).setEmbeds(builder.build()).queue();
-
-        } catch (Exception e) {
-            replyErrorMessage(message, "Error parsing map.", 10);
+                } catch (Exception e) {
+                    replyErrorMessage(message, "Error parsing map.", 10);
+                }
+            }
         }
     }
 
@@ -384,7 +366,7 @@ public class Messages extends ListenerAdapter {
         }
     }
 
-    public void handleSchematic(Message message) {
+    public void handleSchematic(Message message, TextChannel channel) {
         // no schematic in others channels
         if (!inChannels(message, schematicChannel)
                 && message.getChannel().getType() != ChannelType.GUILD_PUBLIC_THREAD) {
@@ -392,9 +374,24 @@ public class Messages extends ListenerAdapter {
             return;
         }
         try {
-            Schematic schem = message.getAttachments().size() == 1
-                    ? contentHandler.parseSchematicURL(message.getAttachments().get(0).getUrl())
-                    : contentHandler.parseSchematic(message.getContentRaw());
+            if (message.getAttachments().isEmpty()) {
+                previewSchematic(message, contentHandler.parseSchematic(message.getContentRaw()), channel);
+            } else {
+                for (int i = 0; i < message.getAttachments().size(); i++) {
+                    Attachment a = message.getAttachments().get(i);
+                    if (isSchematicFile(a)) {
+                        previewSchematic(message, contentHandler.parseSchematic(a.getUrl()), channel);
+                    }
+                }
+            }
+            message.delete().queue();
+        } catch (Exception e) {
+            Log.err(e);
+        }
+    }
+
+    public void previewSchematic(Message message, Schematic schem, TextChannel channel) {
+        try {
             BufferedImage preview = contentHandler.previewSchematic(schem);
             String sname = schem.name().replace("/", "_").replace(" ", "_");
             if (sname.isEmpty())
@@ -433,12 +430,79 @@ public class Messages extends ListenerAdapter {
 
             builder.addField("INFO:", field.toString(), true);
             // send embed
-            message.getChannel().sendFile(schemFile).addFile(previewFile).setEmbeds(builder.build()).queue();
-            message.delete().queue();
+            channel.sendFile(schemFile).addFile(previewFile).setEmbeds(builder.build()).queue();
 
         } catch (Exception e) {
             Log.err(e);
         }
-        return;
+    }
+
+    public void helpCommand(Message message, String[] command) {
+        if (command.length == 1) {
+            EmbedBuilder builder = new EmbedBuilder();
+            StringBuffer field = new StringBuffer();
+            builder.setTitle(bold("HELP"));
+            String desc = "";
+            for (String c : commandHandler.commands.keySet()) {
+                if (commandHandler.getCommand(c) == null)
+                    continue;
+                desc = commandHandler.commands.get(c).desc;
+                field.append(capitalize(bold(c)) + ": " + capitalize(desc) + "\n");
+            }
+            builder.addField("Command list", field.toString(), false);
+            message.getChannel().sendMessageEmbeds(builder.build()).queue(_message -> {
+                _message.delete().queueAfter(60, TimeUnit.SECONDS);
+            });
+            message.delete().queue();
+        } else {
+            Command c = commandHandler.getCommand(command[1]);
+            if (c == null) {
+                replyErrorMessage(message, "Command " + command[1] + " not found", 10);
+                return;
+            }
+            EmbedBuilder builder = new EmbedBuilder();
+            builder.setTitle(capitalize(command[1]));
+            StringBuilder field = new StringBuilder();
+
+            field.append(c.usage);
+            builder.addField(prefix + c.argsv, "_" + field.toString() + "_", true);
+
+            message.getChannel().sendMessageEmbeds(builder.build()).queue(_message -> {
+                _message.delete().queueAfter(30, TimeUnit.SECONDS);
+            });
+            message.delete().queueAfter(30, TimeUnit.SECONDS);
+        }
+    }
+
+    public void postMapCommand(Message message, String[] command) {
+        Message msg = message.getReferencedMessage();
+        if (msg != null) {
+            if (msg.getAttachments().size() != 0) {
+                handleMap(msg, guild.getTextChannelById(donateMap));
+                message.delete().queue();
+                return;
+            }
+        }
+
+        if (inChannels(message, mapChannel) || message.getChannel().getType() == ChannelType.GUILD_PUBLIC_THREAD) {
+            if (isMapFile(message)) {
+                handleMap(message, message.getTextChannel());
+                return;
+            } else {
+                replyErrorMessage(message, "Please don't send message here", 10);
+                return;
+            }
+        }
+        replyTempMessage(message, "Please use this command on #map channel", 10);
+    }
+
+    public void postSchematicCommand(Message message, String[] command) {
+        Message msg = message.getReferencedMessage();
+        if (msg == null) {
+            replyErrorMessage(message, "Please reply to a message to use this command", 10);
+            return;
+        }
+        handleSchematic(msg, guild.getTextChannelById(donateSchematic));
+        message.delete().queue();
     }
 }
