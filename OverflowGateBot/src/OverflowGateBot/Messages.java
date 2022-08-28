@@ -34,7 +34,7 @@ public class Messages extends ListenerAdapter {
 
     private final JDA jda;
 
-    public String prefix = "<";
+    public String prefix = "/";
 
     public Guild guild;
 
